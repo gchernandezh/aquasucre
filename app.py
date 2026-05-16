@@ -1,5 +1,10 @@
 from flask import Flask, request, jsonify
 import requests
+import firebase_admin
+from firebase_admin import credentials, firestore
+import os
+import json
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -7,9 +12,16 @@ app = Flask(__name__)
 URL_ALERTAS = "https://externoformiddle--GuillermoHerna8.replit.app/procesar"
 URL_MANTENIMIENTO = "https://externoformiddle--GuillermoHerna8.replit.app/mantenimiento"
 
+# 🔹 Inicializar Firebase
+cred_dict = json.loads(os.environ["FIREBASE_KEY"])
+cred = credentials.Certificate(cred_dict)
+firebase_admin.initialize_app(cred)
+
+db = firestore.client()
+
 @app.route('/')
 def home():
-    return "Middleware funcionando"
+    return "Middleware funcionando con Firebase 🚀"
 
 @app.route('/orquestar', methods=['POST'])
 def orquestar():
@@ -39,6 +51,17 @@ def orquestar():
             resultado["mantenimiento"] = resp_mant.get("accion", "Sin acción")
         else:
             resultado["mantenimiento"] = "No requerido"
+
+        # 🔥 GUARDAR EN FIREBASE
+        db.collection("sensores").add({
+            "sensor": datos_transformados["sensorId"],
+            "zona": datos_transformados["location"],
+            "presion": datos_transformados["pressure"],
+            "caudal": datos_transformados["flow"],
+            "alerta": resultado["alerta"],
+            "mantenimiento": resultado["mantenimiento"],
+            "timestamp": datetime.now().isoformat()
+        })
 
         return jsonify(resultado)
 
