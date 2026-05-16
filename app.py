@@ -53,6 +53,7 @@ def orquestar():
             resultado["mantenimiento"] = "No requerido"
 
         # 🔥 GUARDAR EN FIREBASE
+        print("📦 Intentando guardar en Firebase...")
         db.collection("sensores").add({
             "sensor": datos_transformados["sensorId"],
             "zona": datos_transformados["location"],
@@ -66,4 +67,5 @@ def orquestar():
         return jsonify(resultado)
 
     except Exception as e:
+        print("🔥 ERROR EN FIREBASE:", e)
         return jsonify({"error": str(e)})
