@@ -1,33 +1,53 @@
 from flask import Flask, request, jsonify
 import requests
-import firebase_admin
-from firebase_admin import credentials, firestore
+import psycopg2
 import os
-import json
-from datetime import datetime
 
 app = Flask(__name__)
 
-# 🔹 URLs de APIs externas (Replit)
+# 🔹 URLs externas
 URL_ALERTAS = "https://externoformiddle--GuillermoHerna8.replit.app/procesar"
 URL_MANTENIMIENTO = "https://externoformiddle--GuillermoHerna8.replit.app/mantenimiento"
 
-# 🔹 Inicializar Firebase
-cred_dict = json.loads(os.environ["FIREBASE_KEY"])
-cred = credentials.Certificate(cred_dict)
-firebase_admin.initialize_app(cred)
+# 🔹 Conexión a Neon
+DATABASE_URL = os.environ["DATABASE_URL"]
 
-db = firestore.client()
+def guardar_en_db(data):
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO sensores (sensor, zona, presion, caudal, alerta, mantenimiento)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            data["sensor"],
+            data["zona"],
+            data["presion"],
+            data["caudal"],
+            data["alerta"],
+            data["mantenimiento"]
+        ))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        print("💾 Guardado en Neon")
+
+    except Exception as e:
+        print("🔥 ERROR DB:", e)
+
 
 @app.route('/')
 def home():
-    return "Middleware funcionando con Firebase 🚀"
+    return "Middleware con PostgreSQL (Neon) 🚀"
+
 
 @app.route('/orquestar', methods=['POST'])
 def orquestar():
     data = request.json
 
-    # 🔹 Transformación
     datos_transformados = {
         "sensorId": data["id_sensor"],
         "location": data["zona"],
@@ -37,7 +57,7 @@ def orquestar():
     }
 
     try:
-        # 🔹 Llamar API de alertas
+        # 🔹 API alertas
         resp_alerta = requests.post(URL_ALERTAS, json=datos_transformados).json()
 
         resultado = {
@@ -45,27 +65,25 @@ def orquestar():
             "alerta": resp_alerta.get("resultado", "Sin respuesta")
         }
 
-        # 🔹 Decisión
+        # 🔹 decisión
         if datos_transformados["pressure"] < 150:
             resp_mant = requests.post(URL_MANTENIMIENTO, json=datos_transformados).json()
             resultado["mantenimiento"] = resp_mant.get("accion", "Sin acción")
         else:
             resultado["mantenimiento"] = "No requerido"
 
-        # 🔥 GUARDAR EN FIREBASE
-        print("📦 Intentando guardar en Firebase...")
-        db.collection("sensores").add({
-            "sensor": datos_transformados["sensorId"],
+        # 🔥 guardar en Neon
+        guardar_en_db({
+            "sensor": resultado["sensor"],
             "zona": datos_transformados["location"],
             "presion": datos_transformados["pressure"],
             "caudal": datos_transformados["flow"],
             "alerta": resultado["alerta"],
-            "mantenimiento": resultado["mantenimiento"],
-            "timestamp": datetime.now().isoformat()
+            "mantenimiento": resultado["mantenimiento"]
         })
 
         return jsonify(resultado)
 
     except Exception as e:
-        print("🔥 ERROR EN FIREBASE:", e)
+        print("🔥 ERROR:", e)
         return jsonify({"error": str(e)})
